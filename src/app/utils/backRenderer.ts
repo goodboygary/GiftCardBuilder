@@ -15,8 +15,8 @@ const IN = {
   giftCX: 2.515, giftCY: 0.552, giftW: 0.706,
   termsX: 0.257, termsY: 0.893, termsLineH: 0.077, termsFontPt: 5.0,
   sidX: 0.257, sidY: 1.531,
-  qrCX: 2.519, qrCY: 1.250, qrSize: 0.683,
-  cardNumCX: 2.543, cardNumCY: 1.702, cardNumFontPt: 6.5,
+  qrCX: 2.519, qrCY: 1.150, qrSize: 0.683,
+  cardNumCX: 2.543, cardNumCY: 1.602, cardNumFontPt: 6.5,
   stripeY: 1.786,
   logoCX: 0.879, logoCY: 0.530,
 };
