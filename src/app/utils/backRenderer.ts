@@ -43,7 +43,7 @@ const TERMS_LINES = [
   "Your use of this card constitutes acceptance",
   "of the following terms and conditions.",
   "This is not a credit or debit card and carries no implied",
-  "warranties. The merchant is not  responsible for lost,",
+  "warranties. The merchant is not responsible for lost,",
   "stolen, or damaged cards, or for any unauthorized use.",
   "This card is redeemable for purchase only.",
   "Unused value remains on card and is not",
