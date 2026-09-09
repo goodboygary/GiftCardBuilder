@@ -18,6 +18,7 @@ export interface GiftCardState {
   backLogoY: number;
   backLogoScale: number;
   backFontColor: string;
+  giftCardColor: string;
 
   // Order details
   restaurantName: string;
@@ -39,10 +40,11 @@ const defaultState: GiftCardState = {
 
   backLogo: null,
   backBgColor: "#000000",
-  backLogoX: 26,
+  backLogoX: 33.7, // horizontally centered over the terms text block
   backLogoY: 25,
   backLogoScale: 0.5,
   backFontColor: "#FFFFFF",
+  giftCardColor: "#B4A44A",
 
   restaurantName: "",
   storeId: "",

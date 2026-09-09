@@ -1,3 +1,5 @@
+import { drawGiftCardWordmark } from "./giftCardWordmark";
+
 // Shared renderer for the back of the gift card.
 // All positions derived from the original Back.ai (255.6 x 165.6 pts).
 // Converted to fractions of card dimensions for canvas rendering,
@@ -12,7 +14,6 @@ const CARD_H = 2.125;
 
 // Exact positions from Back.ai analysis (in inches on a 3.375x2.125 card)
 const IN = {
-  giftCX: 2.515, giftCY: 0.552, giftW: 0.706,
   termsX: 0.257, termsY: 0.893, termsLineH: 0.077, termsFontPt: 5.0,
   sidX: 0.257, sidY: 1.531,
   qrCX: 2.519, qrCY: 1.150, qrSize: 0.683,
@@ -21,11 +22,35 @@ const IN = {
   logoCX: 0.879, logoCY: 0.530,
 };
 
+// "gift card" wordmark: matches the QR code's VISIBLE width, edges aligned
+// with it, sitting just above the QR's white pad. The QR image is generated
+// with a 1-module quiet zone (store IDs are short numerics → always a
+// version-1 code, 21 modules), so its black area spans 21/23 of the drawn box.
+const QR_VISIBLE_FRACTION = 21 / 23;
+const QR_PAD_IN = 0.015;
+const GIFT_QR_GAP_IN = 0.008; // wordmark hugs the QR's white pad
+const NUM_DESCENT_IN = 0.03; // descender allowance below the number baseline
+
+// Aspect of public/gift-card-wordmark.png — used for layout before it loads
+export const DEFAULT_WORDMARK_ASPECT = 674 / 800;
+
+// Layout of the right column (wordmark + QR + card number). The whole group
+// is vertically centered between the card top and the mag stripe.
+export function backColumnLayoutIn(imgAspect: number) {
+  const w = IN.qrSize * QR_VISIBLE_FRACTION;
+  const h = w * imgAspect;
+  const wmY = IN.qrCY - IN.qrSize / 2 - QR_PAD_IN - GIFT_QR_GAP_IN - h;
+  const colBottom = IN.cardNumCY + NUM_DESCENT_IN;
+  const dy = (IN.stripeY - (colBottom - wmY)) / 2 - wmY;
+  return {
+    wordmark: { x: IN.qrCX - w / 2, y: wmY + dy, w, h },
+    qrCY: IN.qrCY + dy,
+    cardNumCY: IN.cardNumCY + dy,
+  };
+}
+
 // Convert to fractions for canvas rendering
 const F = {
-  giftCX: IN.giftCX / CARD_W,
-  giftCY: IN.giftCY / CARD_H,
-  giftW: IN.giftW / CARD_W,
   termsX: IN.termsX / CARD_W,
   termsY: IN.termsY / CARD_H,
   termsLineH: IN.termsLineH / CARD_H,
@@ -57,6 +82,7 @@ export interface BackCardParams {
   logoX: number;
   logoY: number;
   logoScale: number;
+  giftCardColor: string;
   giftCardImg: HTMLImageElement | null;
   qrImg: HTMLImageElement | null;
   storeId: string;
@@ -82,11 +108,14 @@ export function drawBackCard(
     ctx.drawImage(p.logoImg, (p.logoX / 100) * w - dw / 2, (p.logoY / 100) * h - dh / 2, dw, dh);
   }
 
-  // 3. "gift card" image
+  // 3. "gift card" wordmark
+  const colAspect = p.giftCardImg
+    ? p.giftCardImg.naturalHeight / p.giftCardImg.naturalWidth
+    : DEFAULT_WORDMARK_ASPECT;
+  const L = backColumnLayoutIn(colAspect);
   if (p.giftCardImg) {
-    const imgW = F.giftW * w;
-    const imgH = imgW * (p.giftCardImg.naturalHeight / p.giftCardImg.naturalWidth);
-    ctx.drawImage(p.giftCardImg, F.giftCX * w - imgW / 2, F.giftCY * h - imgH / 2, imgW, imgH);
+    const r = L.wordmark;
+    drawGiftCardWordmark(ctx, (r.x / CARD_W) * w, (r.y / CARD_H) * h, (r.w / CARD_W) * w, p.giftCardColor, p.giftCardImg);
   }
 
   // 4. Terms text — scale font to match 5pt on the physical card
@@ -106,7 +135,7 @@ export function drawBackCard(
   // 6. QR code
   const qrPx = Math.round(F.qrSize * w);
   const qrL = F.qrCX * w - qrPx / 2;
-  const qrT = F.qrCY * h - qrPx / 2;
+  const qrT = (L.qrCY / CARD_H) * h - qrPx / 2;
   ctx.fillStyle = "#FFFFFF";
   const pad = Math.round(qrPx * 0.04);
   ctx.fillRect(qrL - pad, qrT - pad, qrPx + pad * 2, qrPx + pad * 2);
@@ -114,12 +143,22 @@ export function drawBackCard(
     ctx.drawImage(p.qrImg, qrL, qrT, qrPx, qrPx);
   }
 
-  // 7. Card number
+  // 7. Card number — letter-spaced to span the QR's visible width
   const numFontPx = Math.round(0.0427 * h); // ~6.5pt on 2.125"
   ctx.fillStyle = p.fontColor;
   ctx.font = `${numFontPx}px 'Helvetica Neue', Helvetica, sans-serif`;
-  ctx.textAlign = "center";
-  ctx.fillText(p.cardNumber, F.cardNumCX * w, F.cardNumCY * h);
+  ctx.textAlign = "left";
+  const numY = (L.cardNumCY / CARD_H) * h;
+  const numSpanL = (L.wordmark.x / CARD_W) * w;
+  const numSpanW = (L.wordmark.w / CARD_W) * w;
+  const numChars = p.cardNumber.split("");
+  const numWidths = numChars.map((c) => ctx.measureText(c).width);
+  const numExtra = (numSpanW - numWidths.reduce((a, b) => a + b, 0)) / Math.max(1, numChars.length - 1);
+  let numX = numSpanL;
+  numChars.forEach((c, i) => {
+    ctx.fillText(c, numX, numY);
+    numX += numWidths[i] + numExtra;
+  });
 
   // 8. Mag stripe — grey stripe with background color border below
   const stripeTop = F.stripeY * h;

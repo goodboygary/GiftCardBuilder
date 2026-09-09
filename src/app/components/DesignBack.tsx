@@ -5,6 +5,7 @@ import { useGiftCard } from "../context/GiftCardContext";
 import ColorPicker from "./ColorPicker";
 import { getContrastFontColor } from "../utils/color";
 import { drawBackCard, BACK_CW, BACK_CH } from "../utils/backRenderer";
+import { WORDMARK_SRC } from "../utils/giftCardWordmark";
 
 const ASPECT = 3.375 / 2.125;
 
@@ -18,11 +19,11 @@ export default function DesignBack() {
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef({ x: 0, y: 0, logoX: 0, logoY: 0 });
 
-  // Load "gift card" text image
+  // Load "gift card" wordmark artwork
   useEffect(() => {
     const img = new Image();
     img.onload = () => setGiftCardImg(img);
-    img.src = "/gift-card-text.png";
+    img.src = WORDMARK_SRC;
   }, []);
 
   // Auto font color
@@ -73,13 +74,14 @@ export default function DesignBack() {
       logoX: state.backLogoX,
       logoY: state.backLogoY,
       logoScale: state.backLogoScale,
+      giftCardColor: state.giftCardColor,
       giftCardImg,
       qrImg,
       storeId: state.storeId || "0000000",
       cardNumber: cardNum,
     });
   }, [
-    state.backBgColor, state.backFontColor,
+    state.backBgColor, state.backFontColor, state.giftCardColor,
     state.backLogoX, state.backLogoY, state.backLogoScale,
     state.storeId, state.orderNumber, state.quantity,
     logoImg, giftCardImg, qrImg,
@@ -191,6 +193,8 @@ export default function DesignBack() {
           </div>
 
           <ColorPicker color={state.backBgColor} onChange={(c) => updateState({ backBgColor: c })} label="Background Color" />
+
+          <ColorPicker color={state.giftCardColor} onChange={(c) => updateState({ giftCardColor: c })} label="&quot;gift card&quot; Text Color" />
         </div>
       </div>
 

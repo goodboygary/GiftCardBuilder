@@ -2,7 +2,8 @@
 
 import { useRef, useEffect, useCallback, useState } from "react";
 import { useGiftCard } from "../context/GiftCardContext";
-import { drawBackCard, BACK_CW, BACK_CH, BACK_POSITIONS_IN, TERMS_TEXT } from "../utils/backRenderer";
+import { drawBackCard, backColumnLayoutIn, DEFAULT_WORDMARK_ASPECT, BACK_CW, BACK_CH, BACK_POSITIONS_IN, TERMS_TEXT } from "../utils/backRenderer";
+import { renderGiftCardWordmark, WORDMARK_SRC } from "../utils/giftCardWordmark";
 import { generateOrderDocx } from "../utils/docxTemplate";
 import { saveOrder } from "../utils/orderHistory";
 
@@ -36,7 +37,7 @@ export default function ReviewExport() {
   }, [state.backLogo]);
 
   useEffect(() => {
-    const img = new Image(); img.onload = () => setGiftCardImg(img); img.src = "/gift-card-text.png";
+    const img = new Image(); img.onload = () => setGiftCardImg(img); img.src = WORDMARK_SRC;
   }, []);
 
   // Generate QR from store ID (or "SAMPLE" as placeholder)
@@ -94,13 +95,14 @@ export default function ReviewExport() {
       logoX: state.backLogoX,
       logoY: state.backLogoY,
       logoScale: state.backLogoScale,
+      giftCardColor: state.giftCardColor,
       giftCardImg,
       qrImg,
       storeId: state.storeId || "0000000",
       cardNumber: fmtN(startNum),
     });
   }, [
-    state.backBgColor, state.backFontColor,
+    state.backBgColor, state.backFontColor, state.giftCardColor,
     state.backLogoX, state.backLogoY, state.backLogoScale,
     state.storeId, startNum,
     backLogoImg, giftCardImg, qrImg,
@@ -191,14 +193,15 @@ export default function ReviewExport() {
           inX(state.backLogoX) - sz.wIn / 2, inY(state.backLogoY) - sz.hIn / 2, sz.wIn, sz.hIn);
       }
 
-      // Layer 3: "gift card" text image
+      // Layer 3: "gift card" wordmark image
+      const colLayout = backColumnLayoutIn(
+        giftCardImg ? giftCardImg.naturalHeight / giftCardImg.naturalWidth : DEFAULT_WORDMARK_ASPECT,
+      );
       if (giftCardImg) {
-        const imgWIn = B.giftW;
-        const imgHIn = imgWIn * (giftCardImg.naturalHeight / giftCardImg.naturalWidth);
-        const gcPxW = Math.round((imgWIn / CARD_W) * CW);
-        const gcPxH = Math.round((imgHIn / CARD_H) * CH);
-        backPdf.addImage(imgToDataUrl(giftCardImg, gcPxW, gcPxH), "PNG",
-          B.giftCX - imgWIn / 2, B.giftCY - imgHIn / 2, imgWIn, imgHIn);
+        const r = colLayout.wordmark;
+        const gcPxW = Math.round((r.w / CARD_W) * CW);
+        const wordmarkCanvas = renderGiftCardWordmark(gcPxW, state.giftCardColor, giftCardImg);
+        backPdf.addImage(wordmarkCanvas.toDataURL("image/png"), "PNG", r.x, r.y, r.w, r.h);
       }
 
       // Layer 4: Terms paragraph text (each line is a separate text object)
@@ -218,16 +221,25 @@ export default function ReviewExport() {
       // Layer 6: QR code image
       backPdf.setFillColor(255, 255, 255);
       const qrPad = 0.015;
-      backPdf.rect(B.qrCX - B.qrSize / 2 - qrPad, B.qrCY - B.qrSize / 2 - qrPad,
+      backPdf.rect(B.qrCX - B.qrSize / 2 - qrPad, colLayout.qrCY - B.qrSize / 2 - qrPad,
         B.qrSize + qrPad * 2, B.qrSize + qrPad * 2, "F");
       backPdf.addImage(qrDataUrl, "PNG",
-        B.qrCX - B.qrSize / 2, B.qrCY - B.qrSize / 2, B.qrSize, B.qrSize);
+        B.qrCX - B.qrSize / 2, colLayout.qrCY - B.qrSize / 2, B.qrSize, B.qrSize);
 
-      // Layer 7: Card number text
+      // Layer 7: Card number text — letter-spaced to span the QR's visible width
       backPdf.setTextColor(fcR, fcG, fcB);
       backPdf.setFont("helvetica", "normal");
       backPdf.setFontSize(B.cardNumFontPt);
-      backPdf.text(fmtN(startNum), B.cardNumCX, B.cardNumCY, { align: "center" });
+      {
+        const numChars = fmtN(startNum).split("");
+        const numWidths = numChars.map((c) => backPdf.getTextWidth(c));
+        const numExtra = (colLayout.wordmark.w - numWidths.reduce((a, b) => a + b, 0)) / Math.max(1, numChars.length - 1);
+        let numX = colLayout.wordmark.x;
+        numChars.forEach((c, i) => {
+          backPdf.text(c, numX, colLayout.cardNumCY);
+          numX += numWidths[i] + numExtra;
+        });
+      }
 
       // Layer 8: Grey magnetic stripe (with bg color border below)
       const bottomMargin = CARD_H * 0.03;
@@ -256,7 +268,7 @@ export default function ReviewExport() {
       drawBackCard(bCtx, CW, CH, {
         bgColor: state.backBgColor, fontColor: state.backFontColor,
         logoImg: backLogoImg, logoX: state.backLogoX, logoY: state.backLogoY, logoScale: state.backLogoScale,
-        giftCardImg, qrImg: qrImgEl, storeId: state.storeId, cardNumber: fmtN(startNum),
+        giftCardColor: state.giftCardColor, giftCardImg, qrImg: qrImgEl, storeId: state.storeId, cardNumber: fmtN(startNum),
       });
 
       const toUint8 = (url: string) => {
@@ -286,8 +298,18 @@ export default function ReviewExport() {
       const frontDataUrl = fpCanvas.toDataURL("image/png");
       const backDataUrl = bpCanvas.toDataURL("image/png");
 
-      // Gift Card Order PDF — same file as the DOCX (just a copy)
-      folder.file("Gift Card Order.pdf", docxBytes);
+      // Gift Card Order PDF — a real PDF mirroring the DOCX order sheet
+      const { generateOrderPdf } = await import("../utils/orderPdf");
+      const orderPdfBytes = await generateOrderPdf({
+        storeId: state.storeId,
+        orderNumber: state.orderNumber,
+        restaurantName: state.restaurantName,
+        restaurantNoSpaces,
+        quantity: state.quantity,
+        startNum,
+        endNum,
+      }, frontDataUrl, backDataUrl);
+      folder.file("Gift Card Order.pdf", orderPdfBytes);
 
       // DesignApproval.pdf — front and back card images with labels and dashed borders
       const approvalPdf = new jsPDF({ orientation: "landscape", unit: "in", format: "letter" });
